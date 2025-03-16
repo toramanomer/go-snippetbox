@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log/slog"
 	"os"
+	"time"
 	"toramanomer/snippetbox/internal/models"
 
 	"net/http"
@@ -85,9 +86,12 @@ func main() {
 	}
 
 	server := &http.Server{
-		Addr:     cfg.addr,
-		Handler:  app.routes(),
-		ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError),
+		Addr:         cfg.addr,
+		Handler:      app.routes(),
+		ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),
+		IdleTimeout:  time.Minute,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
 	}
 
 	app.logger.Info("starting server", slog.String("addr", server.Addr))
