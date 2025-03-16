@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"time"
 )
 
 func (app *application) serverError(
@@ -61,4 +62,10 @@ func (app *application) render(
 
 	w.WriteHeader(status)
 	buf.WriteTo(w)
+}
+
+func (app *application) newTemplateData() templateData {
+	return templateData{
+		CurrentYear: time.Now().Year(),
+	}
 }
