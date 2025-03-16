@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"html/template"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,36 +11,13 @@ import (
 )
 
 func (app *application) home(w http.ResponseWriter, r *http.Request) {
-	w.Header().Add("Server", "Go")
-
 	snippets, err := app.snippets.Latest()
 	if err != nil {
 		app.serverError(w, r, err)
 		return
 	}
 
-	for _, snippet := range snippets {
-		fmt.Fprintf(w, "%+v\n", snippet)
-	}
-
-	/*
-		files := []string{
-			"./ui/html/base.tmpl",
-			"./ui/html/partials/nav.tmpl",
-			"./ui/html/pages/home.tmpl",
-		}
-
-		ts, err := template.ParseFiles(files...)
-		if err != nil {
-			app.serverError(w, r, err)
-			return
-		}
-
-		err = ts.ExecuteTemplate(w, "base", nil)
-		if err != nil {
-			app.serverError(w, r, err)
-		}
-	*/
+	app.render(w, r, http.StatusOK, "home.tmpl", templateData{Snippets: snippets})
 }
 
 func (app *application) snippetView(w http.ResponseWriter, r *http.Request) {
@@ -61,24 +37,7 @@ func (app *application) snippetView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	files := []string{
-		"./ui/html/base.tmpl",
-		"./ui/html/partials/nav.tmpl",
-		"./ui/html/pages/view.tmpl",
-	}
-
-	ts, err := template.ParseFiles(files...)
-	if err != nil {
-		app.serverError(w, r, err)
-		return
-	}
-
-	err = ts.ExecuteTemplate(w, "base", templateData{Snippet: snippet})
-	if err != nil {
-		app.serverError(w, r, err)
-	}
-
-	fmt.Fprintf(w, "%+v", snippet)
+	app.render(w, r, http.StatusOK, "view.tmpl", templateData{Snippet: snippet})
 }
 
 func (app *application) snippetCreate(w http.ResponseWriter, r *http.Request) {
@@ -86,17 +45,17 @@ func (app *application) snippetCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *application) snippetCreatePost(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseForm()
-	if err != nil {
+	if r.ParseForm() != nil {
 		app.clientError(w, http.StatusBadRequest)
 		return
 	}
 
 	var (
-		title   = strings.TrimSpace(r.PostForm.Get("title"))
-		content = strings.TrimSpace(r.PostForm.Get("content"))
+		title        = strings.TrimSpace(r.Form.Get("title"))
+		content      = strings.TrimSpace(r.Form.Get("content"))
+		expires, err = strconv.Atoi(r.Form.Get("expires"))
 	)
-	expires, err := strconv.Atoi(r.PostForm.Get("expires"))
+
 	if err != nil {
 		app.clientError(w, http.StatusBadRequest)
 		return
