@@ -14,18 +14,23 @@ func newTemplateCache() (map[string]*template.Template, error) {
 	}
 
 	for _, page := range pages {
-		name := filepath.Base(page)
-		files := []string{
-			"./ui/html/base.tmpl",
-			"./ui/html/partials/nav.tmpl",
-			page,
-		}
 
-		templateSet, err := template.ParseFiles(files...)
+		templateSet, err := template.ParseFiles("./ui/html/base.tmpl")
 		if err != nil {
 			return nil, err
 		}
 
+		templateSet, err = templateSet.ParseGlob("./ui/html/partials/*.tmpl")
+		if err != nil {
+			return nil, err
+		}
+
+		templateSet, err = templateSet.ParseFiles(page)
+		if err != nil {
+			return nil, err
+		}
+
+		name := filepath.Base(page)
 		cache[name] = templateSet
 	}
 
