@@ -3,6 +3,7 @@ package main
 import (
 	"html/template"
 	"path/filepath"
+	"time"
 	"toramanomer/snippetbox/internal/models"
 )
 
@@ -14,8 +15,9 @@ func newTemplateCache() (map[string]*template.Template, error) {
 	}
 
 	for _, page := range pages {
+		name := filepath.Base(page)
 
-		templateSet, err := template.ParseFiles("./ui/html/base.tmpl")
+		templateSet, err := template.New(name).Funcs(functions).ParseFiles("./ui/html/base.tmpl")
 		if err != nil {
 			return nil, err
 		}
@@ -30,11 +32,18 @@ func newTemplateCache() (map[string]*template.Template, error) {
 			return nil, err
 		}
 
-		name := filepath.Base(page)
 		cache[name] = templateSet
 	}
 
 	return cache, nil
+}
+
+func formattedDate(t time.Time) string {
+	return t.Format("02 Jan 2006 at 16:04")
+}
+
+var functions = template.FuncMap{
+	"formattedDate": formattedDate,
 }
 
 type templateData struct {
