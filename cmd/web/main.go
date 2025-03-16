@@ -75,8 +75,12 @@ func main() {
 		snippets: &models.SnippetModel{DB: db},
 	}
 
-	server := &http.Server{Addr: cfg.addr, Handler: app.routes()}
+	server := &http.Server{
+		Addr:     cfg.addr,
+		Handler:  app.routes(),
+		ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError),
+	}
 
 	app.logger.Info("starting server", slog.String("addr", server.Addr))
-	app.logger.Error(server.ListenAndServe().Error())
+	app.logger.Error(server.ListenAndServeTLS("./tls/cert.pem", "./tls/key.pem").Error())
 }
