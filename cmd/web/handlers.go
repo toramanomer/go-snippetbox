@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"toramanomer/snippetbox/internal/models"
-	"unicode/utf8"
+	"toramanomer/snippetbox/internal/validator"
 )
 
 func (app *application) home(w http.ResponseWriter, r *http.Request) {
@@ -47,10 +46,10 @@ func (app *application) snippetView(w http.ResponseWriter, r *http.Request) {
 }
 
 type snippetCreateForm struct {
-	Title       string
-	Content     string
-	Expires     int
-	FieldErrors map[string]string
+	Title               string `form:"title"`
+	Content             string `form:"content"`
+	Expires             int    `form:"expires"`
+	validator.Validator `form:"-"`
 }
 
 func (app *application) snippetCreate(w http.ResponseWriter, r *http.Request) {
@@ -60,51 +59,27 @@ func (app *application) snippetCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *application) snippetCreatePost(w http.ResponseWriter, r *http.Request) {
-	if r.ParseForm() != nil {
-		app.clientError(w, http.StatusBadRequest)
-		return
-	}
+	var form snippetCreateForm
 
-	var (
-		title        = strings.TrimSpace(r.Form.Get("title"))
-		content      = strings.TrimSpace(r.Form.Get("content"))
-		expires, err = strconv.Atoi(r.Form.Get("expires"))
-	)
-
+	err := app.decodePostForm(r, &form)
 	if err != nil {
 		app.clientError(w, http.StatusBadRequest)
 		return
 	}
 
-	form := snippetCreateForm{
-		Title:       title,
-		Content:     content,
-		Expires:     expires,
-		FieldErrors: map[string]string{},
-	}
+	form.CheckField(validator.NotBlank(form.Title), "title", "Title cannot be blank")
+	form.CheckField(validator.MaxChars(form.Title, 100), "title", "Title cannot be more than 100 characters long")
+	form.CheckField(validator.NotBlank(form.Content), "content", "Content cannot be blank")
+	form.CheckField(validator.PermittedValue(form.Expires, 1, 7, 365), "expires", "Expiry must be 1, 7 or 365")
 
-	if title == "" {
-		form.FieldErrors["title"] = "Title cannot be blank"
-	} else if utf8.RuneCountInString(title) > 100 {
-		form.FieldErrors["title"] = "Title cannot be more than 100 characters long"
-	}
-
-	if content == "" {
-		form.FieldErrors["content"] = "Content cannot be blank"
-	}
-
-	if expires != 1 && expires != 7 && expires != 365 {
-		form.FieldErrors["expires"] = "Expiration must be 1, 7 or 365"
-	}
-
-	if len(form.FieldErrors) > 0 {
+	if !form.Valid() {
 		data := app.newTemplateData(r)
 		data.Form = form
 		app.render(w, r, http.StatusUnprocessableEntity, "create.tmpl", data)
 		return
 	}
 
-	id, err := app.snippets.Insert(title, content, expires)
+	id, err := app.snippets.Insert(form.Title, form.Content, form.Expires)
 	if err != nil {
 		app.serverError(w, r, err)
 		return
@@ -113,4 +88,128 @@ func (app *application) snippetCreatePost(w http.ResponseWriter, r *http.Request
 	app.sessionManager.Put(r.Context(), "flash", "Snippet successfully created!")
 
 	http.Redirect(w, r, fmt.Sprintf("/snippet/view/%d", id), http.StatusSeeOther)
+}
+
+type userSignupForm struct {
+	Name                string `form:"name"`
+	Email               string `form:"email"`
+	Password            string `form:"password"`
+	validator.Validator `form:"-"`
+}
+
+func (app *application) userSignup(w http.ResponseWriter, r *http.Request) {
+	data := app.newTemplateData(r)
+	data.Form = userSignupForm{}
+	app.render(w, r, http.StatusOK, "signup.tmpl", data)
+}
+
+func (app *application) userSignupPost(w http.ResponseWriter, r *http.Request) {
+	var form userSignupForm
+
+	if app.decodePostForm(r, &form) != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	form.CheckField(validator.NotBlank(form.Name), "name", "Name cannot be empty.")
+
+	form.CheckField(validator.NotBlank(form.Email), "email", "Email cannot be empty.")
+	form.CheckField(validator.Matches(form.Email, validator.EmailRX), "email", "Must be a valid email.")
+
+	form.CheckField(validator.NotBlank(form.Password), "password", "Password cannot be empty.")
+	form.CheckField(validator.MinChars(form.Password, 8), "password", "Password must be at least 8 characters long.")
+
+	if !form.Valid() {
+		data := templateData{}
+		form.Password = ""
+		data.Form = form
+		app.render(w, r, http.StatusUnprocessableEntity, "signup.tmpl", data)
+		return
+	}
+	if err := app.users.Insert(form.Name, form.Email, form.Password); err != nil {
+		if errors.Is(err, models.ErrDuplicateEmail) {
+			form.AddFieldError("email", "Email address is already in use")
+			data := app.newTemplateData(r)
+			data.Form = form
+			app.render(w, r, http.StatusUnprocessableEntity, "signup.tmpl", data)
+		} else {
+			app.serverError(w, r, err)
+		}
+		return
+	}
+
+	app.sessionManager.Put(r.Context(), "flash", "Your signup was successful. Please log in")
+
+	http.Redirect(w, r, "/user/login", http.StatusSeeOther)
+}
+
+type userLoginForm struct {
+	Email               string `form:"email"`
+	Password            string `form:"password"`
+	validator.Validator `form:"-"`
+}
+
+func (app *application) userLogin(w http.ResponseWriter, r *http.Request) {
+	data := app.newTemplateData(r)
+	data.Form = userLoginForm{}
+	app.render(w, r, http.StatusOK, "login.tmpl", data)
+}
+
+func (app *application) userLoginPost(w http.ResponseWriter, r *http.Request) {
+	var form userLoginForm
+	if app.decodePostForm(r, &form) != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	form.CheckField(validator.NotBlank(form.Email), "email", "Email cannot be blank.")
+	form.CheckField(validator.Matches(form.Email, validator.EmailRX), "email", "Must be a valid email.")
+
+	form.CheckField(validator.NotBlank(form.Password), "password", "Password cannot be empty.")
+
+	if !form.Valid() {
+		data := app.newTemplateData(r)
+		form.Password = ""
+		data.Form = form
+
+		app.render(w, r, http.StatusUnprocessableEntity, "login.tmpl", data)
+		return
+	}
+
+	id, err := app.users.Authenticate(form.Email, form.Password)
+	if err != nil {
+		if errors.Is(err, models.ErrInvalidCredentials) {
+			form.AddNonFieldError("Email or password is incorrect")
+
+			data := app.newTemplateData(r)
+			data.Form = form
+			app.render(w, r, http.StatusUnprocessableEntity, "login.tmpl", data)
+		} else {
+			app.serverError(w, r, err)
+		}
+		return
+	}
+
+	if err := app.sessionManager.RenewToken(r.Context()); err != nil {
+		app.serverError(w, r, err)
+		return
+	}
+
+	app.sessionManager.Put(r.Context(), "authenticatedUserID", id)
+
+	http.Redirect(w, r, "/snippet/create", http.StatusSeeOther)
+
+}
+
+func (app *application) userLogoutPost(w http.ResponseWriter, r *http.Request) {
+	err := app.sessionManager.RenewToken(r.Context())
+	if err != nil {
+		app.serverError(w, r, err)
+		return
+	}
+
+	app.sessionManager.Remove(r.Context(), "authenticatedUserID")
+	app.sessionManager.Put(r.Context(), "flash", "You've been logged out successfully!")
+
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

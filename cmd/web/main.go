@@ -13,6 +13,7 @@ import (
 
 	"github.com/alexedwards/scs/mysqlstore"
 	"github.com/alexedwards/scs/v2"
+	"github.com/go-playground/form/v4"
 	"github.com/go-sql-driver/mysql"
 )
 
@@ -24,12 +25,13 @@ type config struct {
 type application struct {
 	logger         *slog.Logger
 	snippets       *models.SnippetModel
+	users          *models.UserModel
 	templateCache  map[string]*template.Template
+	formDecoder    *form.Decoder
 	sessionManager *scs.SessionManager
 }
 
 func openDB(driverName string, dataSourceName string) (*sql.DB, error) {
-
 	db, err := sql.Open(driverName, dataSourceName)
 	if err != nil {
 		return nil, err
@@ -45,7 +47,6 @@ func openDB(driverName string, dataSourceName string) (*sql.DB, error) {
 }
 
 func main() {
-
 	var (
 		logger   = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		mySqlCfg = &mysql.Config{
@@ -76,6 +77,8 @@ func main() {
 
 	flag.Parse()
 
+	formDecoder := form.NewDecoder()
+
 	templateCache, err := newTemplateCache()
 	if err != nil {
 		logger.Error(err.Error())
@@ -89,7 +92,9 @@ func main() {
 	app := application{
 		logger:         logger,
 		snippets:       &models.SnippetModel{DB: db},
+		users:          &models.UserModel{DB: db},
 		templateCache:  templateCache,
+		formDecoder:    formDecoder,
 		sessionManager: sessionManager,
 	}
 
